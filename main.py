@@ -1,4 +1,50 @@
 # Part(1)--------------------------------------------------------------------------------
+import tkinter as tk
+from tkinter import messagebox
+import random
+import socket
+
+# TCP and UDP Configuration
+TCP_SERVER_IP = 'localhost'
+TCP_SERVER_PORT = 5000
+UDP_SERVER_IP = 'localhost'
+UDP_SERVER_PORT = 6000
+
+# Function to simulate TCP control
+def tcp_control(device, state):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect((TCP_SERVER_IP, TCP_SERVER_PORT))
+            command = f"{device} is now {state}"
+            sock.sendall(command.encode())
+            response = sock.recv(1024).decode()
+            messagebox.showinfo("TCP Command", response)
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
+# Function to simulate UDP control
+def udp_control(device, state):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            command = f"{device} is now {state}"
+            sock.sendto(command.encode(), (UDP_SERVER_IP, UDP_SERVER_PORT))
+            response, _ = sock.recvfrom(1024)
+            messagebox.showinfo("UDP Command", response.decode())
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
+# Function to simulate reading temperature
+def read_temperature():
+    return random.randint(18, 30)
+
+# Function to simulate energy usage
+def get_energy_usage():
+    return {
+        "Living Room Light": random.uniform(0.1, 1.0),
+        "Thermostat": random.uniform(0.5, 2.0),
+        "Security Camera": random.uniform(0.1, 0.5),
+        "Main Door Lock": random.uniform(0.05, 0.2)
+    }
 # Part(2)--------------------------------------------------------------------------------
 # Part(3)--------------------------------------------------------------------------------
 def toggle_device(self, state_var, status_label, command):
