@@ -46,6 +46,56 @@ def get_energy_usage():
         "Main Door Lock": random.uniform(0.05, 0.2)
     }
 # Part(2)--------------------------------------------------------------------------------
+# Main dashboard window
+class SmartHomeApp(tk.Tk):
+    def init(self):
+        super().init()
+        self.title("Smart Home Dashboard")
+        self.geometry("500x700")
+
+        # Set default colors for the app
+        self.bg_color = "#FFFFFF"
+        self.fg_color = "#000000"
+
+        # Adding main sections
+        tk.Label(self, text="Dashboard", font=("Arial", 18, "bold"), bg=self.bg_color, fg=self.fg_color).pack(pady=(5, 15))
+        self.create_section("Living Room Light", self.toggle_light, is_toggle=True)
+        self.create_section("Thermostat", self.set_thermostat, is_slider=True)
+        self.create_section("Security Camera", self.toggle_camera, is_toggle=True)
+        self.create_section("Main Door Lock", self.toggle_door_lock, is_toggle=True)
+
+        # Temperature Monitoring
+        tk.Label(self, text="Current Room Temperature", font=("Arial", 14, "bold"), bg=self.bg_color, fg=self.fg_color).pack(pady=(20, 5))
+        self.temp_label = tk.Label(self, text=f"{read_temperature()}°C", bg=self.bg_color, font=("Arial", 16, "bold"))
+        self.temp_label.pack()
+
+        # Create Smart Alerts and Recommendations before updating temperature
+        self.create_smart_alerts()
+        self.update_temperature()
+
+        # Create Energy Monitoring
+        self.create_energy_monitor()
+
+    def create_section(self, name, command, is_toggle=False, is_slider=False):
+        """Create a device control with bold, colored labels and status indicators."""
+        frame = tk.Frame(self, bg=self.bg_color, highlightbackground="gray", highlightthickness=1, pady=5)
+        frame.pack(pady=10, padx=20, fill="x")
+
+        # Device Name
+        tk.Label(frame, text=name, font=("Arial", 12, "bold"), bg=self.bg_color, fg="blue").pack(side="left", padx=(5, 0))
+
+        if is_toggle:
+            state_var = tk.BooleanVar()
+            status_label = tk.Label(frame, text="OFF", font=("Arial", 10, "bold"), fg="red", bg=self.bg_color)
+            status_label.pack(side="right", padx=(0, 5))
+            tk.Checkbutton(frame, text="ON/OFF", variable=state_var,
+command=lambda: self.toggle_device(state_var, status_label, command), bg=self.bg_color,
+                           fg=self.fg_color, selectcolor=self.bg_color).pack(side="right")
+        elif is_slider:
+            temp_var = tk.IntVar(value=22)
+            tk.Scale(frame, from_=15, to=30, orient="horizontal", variable=temp_var,
+                     command=lambda v: command(temp_var.get()), bg=self.bg_color, fg=self.fg_color).pack(side="right")
+
 # Part(3)--------------------------------------------------------------------------------
 def toggle_device(self, state_var, status_label, command):
     """Toggle device status with colored indicators."""
@@ -132,8 +182,7 @@ def update_smart_alerts(self, temp):
     def toggle_theme(self):
         self.is_dark_mode = not self.is_dark_mode
         self.configure_style()
-        self.toggle_button.config(text="Switch to Light Mode" if self.is_dark_mode else "Switch to Dark Mode",
-                                  bg=self.bg_color, fg=self.fg_color)
+        self.toggle_button.config(text="Switch to Light Mode" if self.is_dark_mode else "Switch to Dark Mode",bg=self.bg_color, fg=self.fg_color)
 
     def configure_style(self):
         """Configure colors and styles based on the theme."""
