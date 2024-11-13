@@ -1,6 +1,11 @@
+# ================================
+# 1: Server Setup and TCP Server
+# ================================
+
 import socket
 import threading
 
+# Server Configuration
 TCP_SERVER_IP = 'localhost'
 TCP_SERVER_PORT = 5000
 UDP_SERVER_IP = 'localhost'
@@ -20,6 +25,7 @@ def tcp_server():
             # Handle each connection in a new thread
             threading.Thread(target=handle_tcp_client, args=(conn,)).start()
 
+# Function to handle individual TCP client connections
 def handle_tcp_client(conn):
     """Handle individual TCP client connection"""
     with conn:
@@ -31,6 +37,10 @@ def handle_tcp_client(conn):
                 conn.sendall(response.encode())
         except Exception as e:
             print("TCP client error:", e)
+
+# ================================
+# 2: UDP Server and Thread Management
+# ================================
 
 # UDP server function
 def udp_server():
@@ -48,14 +58,14 @@ def udp_server():
             except Exception as e:
                 print("UDP server error:", e)
 
-# Run both servers concurrently
+# Main server setup to run both TCP and UDP servers concurrently
 if __name__ == "__main__":
     tcp_thread = threading.Thread(target=tcp_server, daemon=True)
     udp_thread = threading.Thread(target=udp_server, daemon=True)
     tcp_thread.start()
     udp_thread.start()
     
-    # Keep the main thread running to prevent server from closing
+    # Keep the main thread running to prevent the server from closing
     print("Server is running. Press Ctrl+C to stop.")
     try:
         tcp_thread.join()
