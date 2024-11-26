@@ -1,45 +1,36 @@
-import socket
-import threading
-import ssl
+from pyftpdlib.authorizers import DummyAuthorizer
+from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.servers import FTPServer
+import os
 
-# SSL Configuration
-SERVER_CERT = 'server.crt'
-SERVER_KEY = 'server.key'
-TCP_SERVER_IP = 'localhost'
-TCP_SERVER_PORT = 5000
+# FTP Server Configuration
+FTP_SERVER_IP = '127.0.0.1'  # Use 'localhost' or '127.0.0.1'
+FTP_PORT = 2121
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
+FTP_USERNAME = 'user'
+FTP_PASSWORD = 'pass'
 
-def handle_client(conn):
-    """Handle individual client connection."""
-    with conn:
-        print("Client connected.")
-        try:
-            data = conn.recv(1024).decode()
-            if data:
-                print("Received:", data)
-                response = f"Command '{data}' received and executed."
-                conn.sendall(response.encode())
-        except Exception as e:
-            print("Error handling client:", e)
+def setup_ftp_server():
+    """Set up and run a plain FTP server."""
+    # Create upload directory if it doesn't exist
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
 
-def start_server():
-    """Start an SSL-secured server."""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile=SERVER_CERT, keyfile=SERVER_KEY)
+    # Set up user authorization
+    authorizer = DummyAuthorizer()
+    authorizer.add_user(FTP_USERNAME, FTP_PASSWORD, UPLOAD_FOLDER, perm='elradfmw')  # Full permissions
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as server_sock:
-        server_sock.bind((TCP_SERVER_IP, TCP_SERVER_PORT))
-        server_sock.listen(5)
-        print(f"Server listening on {TCP_SERVER_IP}:{TCP_SERVER_PORT}")
+    # Configure FTP handler
+    handler = FTPHandler
+    handler.authorizer = authorizer
 
-        with context.wrap_socket(server_sock, server_side=True) as secure_sock:
-            while True:
-                conn, addr = secure_sock.accept()
-                print(f"Connection from {addr}")
-                threading.Thread(target=handle_client, args=(conn,)).start()
+    # Start FTP server
+    server = FTPServer((FTP_SERVER_IP, FTP_PORT), handler)
+    print(f"FTP server running on {FTP_SERVER_IP}:{FTP_PORT}")
+    print(f"Username: {FTP_USERNAME}, Password: {FTP_PASSWORD}")
+    print(f"Upload files to: {UPLOAD_FOLDER}")
+    server.serve_forever()
+
 
 if __name__ == "__main__":
-    print("Secure server starting...")
-    try:
-        start_server()
-    except KeyboardInterrupt:
-        print("Server shutting down.")
+    setup_ftp_server()

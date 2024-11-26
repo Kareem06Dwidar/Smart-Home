@@ -1,123 +1,97 @@
-import tkinter as tk
-import socket
-import ssl
-import threading
-import speech_recognition as sr
+import cv2
+import os
+from ftplib import FTP
+from datetime import datetime
 
-# SSL Configuration
-SERVER_CERT = 'server.crt'
-TCP_SERVER_IP = 'localhost'
-TCP_SERVER_PORT = 5000
+# FTP Configuration
+FTP_SERVER = '127.0.0.1'  # IP of the FTP server
+FTP_PORT = 2121           # Port for FTP server
+FTP_USERNAME = 'user'
+FTP_PASSWORD = 'pass'
+FTP_UPLOAD_FOLDER = '/'   # Root folder on the server
 
-# Function to log messages in the GUI
+# Output folder for captured images
+CAPTURE_FOLDER = "captures"
+os.makedirs(CAPTURE_FOLDER, exist_ok=True)
+
 def log_message(message):
-    """Log messages to the GUI."""
-    root.after(0, lambda: _log_message(message))
+    """Log messages to the console."""
+    print(message)
 
-def _log_message(message):
-    log_text.config(state=tk.NORMAL)
-    log_text.insert(tk.END, message + '\n')
-    log_text.yview(tk.END)
-    log_text.config(state=tk.DISABLED)
 
-# Function to send a secure TCP command
-def send_secure_command(command):
-    """Send a command to the server securely using SSL."""
+def capture_motion():
+    """Capture motion using the camera and save an image."""
+    log_message("Starting camera for motion detection...")
+
+    # Open the camera
+    camera = cv2.VideoCapture(0)
+    if not camera.isOpened():
+        log_message("Error: Could not access the camera.")
+        return None
+
+    log_message("Camera accessed successfully. Detecting motion...")
+
+    # Read two frames to detect motion
+    ret, frame1 = camera.read()
+    ret, frame2 = camera.read()
+
     try:
-        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-        context.load_verify_locations(SERVER_CERT)
+        while True:
+            # Compute the difference between consecutive frames
+            diff = cv2.absdiff(frame1, frame2)
+            gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(gray, (5, 5), 0)
+            _, thresh = cv2.threshold(blur, 20, 255, cv2.THRESH_BINARY)
+            dilated = cv2.dilate(thresh, None, iterations=3)
+            contours, _ = cv2.findContours(dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-        with socket.create_connection((TCP_SERVER_IP, TCP_SERVER_PORT)) as sock:
-            with context.wrap_socket(sock, server_hostname=TCP_SERVER_IP) as secure_sock:
-                log_message(f"Sending command: {command}")
-                secure_sock.sendall(command.encode())
-                response = secure_sock.recv(1024).decode()
-                log_message(f"Response: {response}")
+            # If motion is detected, capture the image
+            if contours:
+                log_message("Motion detected! Capturing image...")
+
+                # Save the image with a timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                capture_path = os.path.join(CAPTURE_FOLDER, f"motion_{timestamp}.jpg")
+                cv2.imwrite(capture_path, frame1)
+                log_message(f"Image saved: {capture_path}")
+
+                return capture_path
+
+            # Update frames
+            frame1 = frame2
+            ret, frame2 = camera.read()
+
+            # Break the loop with 'q' (Optional Debug Window)
+            if cv2.waitKey(10) & 0xFF == ord('q'):
+                break
+
+    finally:
+        camera.release()
+        cv2.destroyAllWindows()
+
+
+def upload_file_to_ftp(file_path):
+    """Upload a file to the FTP server."""
+    try:
+        log_message(f"Uploading {file_path} to FTP server...")
+
+        # Connect to FTP server
+        with FTP() as ftp:
+            ftp.connect(FTP_SERVER, FTP_PORT)
+            ftp.login(FTP_USERNAME, FTP_PASSWORD)
+            ftp.cwd(FTP_UPLOAD_FOLDER)
+
+            # Upload the file
+            with open(file_path, 'rb') as file:
+                ftp.storbinary(f'STOR {os.path.basename(file_path)}', file)
+
+            log_message(f"File '{file_path}' uploaded successfully to FTP server.")
     except Exception as e:
-        log_message(f"Error: {str(e)}")
+        log_message(f"FTP upload error: {str(e)}")
 
-# Function to process voice commands
-def handle_voice_command(command):
-    """Process the voice command and map to actions."""
-    log_message(f"Recognized Command: {command}")
-    command = command.lower()
 
-    if "light" in command:
-        if "on" in command:
-            send_secure_command("Light ON")
-        elif "off" in command:
-            send_secure_command("Light OFF")
-    elif "door" in command:
-        if "lock" in command:
-            send_secure_command("Door LOCK")
-        elif "unlock" in command:
-            send_secure_command("Door UNLOCK")
-    elif "thermostat" in command:
-        if "set" in command:
-            try:
-                temp = int([word for word in command.split() if word.isdigit()][0])
-                send_secure_command(f"Thermostat SET {temp}°C")
-            except (IndexError, ValueError):
-                log_message("Could not extract temperature from command.")
-        else:
-            log_message("Command not understood for thermostat.")
-    else:
-        log_message("Unknown command.")
-
-# Function to listen for a single voice command
-def listen_for_command():
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        log_message("Listening for a voice command...")
-        try:
-            audio = recognizer.listen(source)
-            command = recognizer.recognize_google(audio)
-            handle_voice_command(command)
-        except sr.UnknownValueError:
-            log_message("Could not understand the voice input.")
-        except sr.RequestError as e:
-            log_message(f"Speech recognition error: {e}")
-
-# Function to start voice command listening in a loop
-def start_listening():
-    """Start listening for voice commands."""
-    status_label.config(text="Listening for commands...")
-    start_button.config(state=tk.DISABLED)
-    stop_button.config(state=tk.NORMAL)
-    threading.Thread(target=continuous_listen, daemon=True).start()
-
-def stop_listening():
-    """Stop listening for voice commands."""
-    global listening
-    listening = False
-    log_message("Stopped listening for commands.")
-    status_label.config(text="Voice command stopped.")
-    start_button.config(state=tk.NORMAL)
-
-def continuous_listen():
-    """Continuously listen for commands."""
-    global listening
-    listening = True
-    while listening:
-        listen_for_command()
-
-# GUI Setup
-root = tk.Tk()
-root.title("Smart Home Voice Command Center")
-root.geometry("600x650")
-
-tk.Label(root, text="Smart Home Command Center", font=("Arial", 18)).pack(pady=10)
-
-log_text = tk.Text(root, height=15, width=70, wrap=tk.WORD, font=("Arial", 10), state=tk.DISABLED)
-log_text.pack(padx=20, pady=10)
-
-status_label = tk.Label(root, text="Press 'Start Voice Command' to begin.", font=("Arial", 12), fg="blue")
-status_label.pack(pady=10)
-
-start_button = tk.Button(root, text="Start Voice Command", command=start_listening, font=("Arial", 12))
-start_button.pack(pady=10)
-
-stop_button = tk.Button(root, text="Stop Voice Command", command=stop_listening, font=("Arial", 12), state=tk.DISABLED)
-stop_button.pack(pady=10)
-
-root.mainloop()
+if __name__ == "__main__":
+    log_message("Home Security Camera System Initialized")
+    captured_file = capture_motion()
+    if captured_file:
+        upload_file_to_ftp(captured_file)
