@@ -3,10 +3,64 @@ import threading
 import socket
 import ssl
 import cv2
-import os
 from datetime import datetime
 from ftplib import FTP
 import speech_recognition as sr
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from tkinter import messagebox
+import os
+
+# === Email Configuration ===
+IMAP_SERVER = "imap.gmail.com"  # IMAP server for checking email (unused here)
+EMAIL_ADDRESS = "kareemsmtp@gmail.com"  # Sender email address
+PASSWORD = "kcic giob cibg mcgs"  # Email password/app password
+
+def send_email(to_address, subject, body, image_path=None):
+    """
+    Sends an email using Gmail's SMTP server.
+    Optionally attaches an image.
+    
+    Parameters:
+    - to_address: Recipient email address.
+    - subject: Subject of the email.
+    - body: Text body of the email.
+    - image_path: Path to the image to attach (optional).
+    """
+    try:
+        # Create the email container
+        message = MIMEMultipart()
+        message["From"] = EMAIL_ADDRESS
+        message["To"] = to_address
+        message["Subject"] = subject
+
+        # Add text content to the email
+        message.attach(MIMEText(body, "plain"))
+
+        # Attach image if provided
+        if image_path:
+            if os.path.exists(image_path):  # Check if image exists
+                with open(image_path, "rb") as img_file:
+                    img = MIMEImage(img_file.read())
+                    img.add_header('Content-Disposition', 'attachment', filename=os.path.basename(image_path))
+                    message.attach(img)
+            else:
+                messagebox.showerror("Image Error", f"Image file not found: {image_path}")
+                return
+
+        # Connect to Gmail's SMTP server and send the email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL_ADDRESS, PASSWORD)  # Authenticate
+            server.sendmail(EMAIL_ADDRESS, to_address, message.as_string())  # Send email
+
+        # Notify user of success
+        messagebox.showinfo("Email Sent", f"Email successfully sent to {to_address}!")
+    except Exception as e:
+        # Notify user of error
+        messagebox.showerror("Email Error", f"Failed to send email: {e}")
+
 
 # === Part 1: FTP Client for Upload ===
 # Handles file uploads to the FTP server.
@@ -17,6 +71,7 @@ FTP_PASSWORD = 'pass'
 FTP_UPLOAD_FOLDER = '/'
 CAPTURE_FOLDER = "captures"
 os.makedirs(CAPTURE_FOLDER, exist_ok=True)
+
 
 def upload_file_to_ftp(file_path):
     """Upload a file to the FTP server."""
@@ -36,6 +91,52 @@ def upload_file_to_ftp(file_path):
 # Handles motion detection and captures images.
 def capture_motion():
     """Detect motion using the camera and capture an image."""
+    camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    if not camera.isOpened():
+        log_message("Error: Could not access the camera.")
+        return None
+
+    ret, frame1 = camera.read()
+    ret, frame2 = camera.read()
+    if not ret:
+        log_message("Error: Could not read frames.")
+        camera.release()
+        return None
+
+    try:
+        while True:
+            diff = cv2.absdiff(frame1, frame2)
+            gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(gray, (5, 5), 0)
+            _, thresh = cv2.threshold(blur, 20, 255, cv2.THRESH_BINARY)
+            dilated = cv2.dilate(thresh, None, iterations=3)
+            contours, _ = cv2.findContours(dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+            if contours:
+                log_message("Motion detected! Capturing image...")
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                capture_path = os.path.join(CAPTURE_FOLDER, f"motion_{timestamp}.jpg")
+                cv2.imwrite(capture_path, frame1)
+                log_message(f"Image saved: {capture_path}")
+
+                # Send email with the captured image
+                send_email(
+                    to_address="kareem.dwidar2003@gmail.com",
+                    subject="Motion Detected",
+                    body="Motion was detected, see the attached image.",
+                    image_path=capture_path
+                )
+                return capture_path
+
+            frame1 = frame2
+            ret, frame2 = camera.read()
+            if not ret:
+                break
+    finally:
+        camera.release()
+        cv2.destroyAllWindows()
+    """Detect motion using the camera and capture an image."""
+    send_email("kareem.dwidar2003@gmail.com",'Camera Detection!','Movement found..', r"C:\Users\Kareem Dwidar\Downloads\photo_5931742804264993388_y.jpg")
     camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not camera.isOpened():
         log_message("Error: Could not access the camera.")
