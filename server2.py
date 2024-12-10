@@ -7,8 +7,8 @@ from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
 
 # === Server Configuration ===
-SERVER_CERT = 'server.crt'  # Path to your SSL certificate
-SERVER_KEY = 'server.key'   # Path to your SSL key
+SERVER_CERT = 'server.crt'
+SERVER_KEY = 'server.key'
 TCP_SERVER_IP = 'localhost'
 TCP_SERVER_PORT = 5000
 FTP_SERVER_IP = '127.0.0.1'
@@ -19,7 +19,6 @@ FTP_PASSWORD = 'pass'
 
 # === FTP Server Setup ===
 def setup_ftp_server():
-    """Set up and run an FTP server."""
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
 
@@ -37,17 +36,14 @@ def setup_ftp_server():
 
 # === TCP Server with SSL and Command Processing ===
 def handle_tcp_client(conn):
-    """Handle individual TCP client connection."""
     with conn:
         print(f"Client connected: {conn}")
         try:
-            # Receive command from client
             data = conn.recv(1024).decode()
             if data:
                 print(f"Received command: {data}")
-                # Process the command
                 response = process_command(data)
-                conn.sendall(response.encode())  # Send the response back to the client
+                conn.sendall(response.encode())
             else:
                 conn.sendall("No command received.".encode())
         except Exception as e:
@@ -55,8 +51,7 @@ def handle_tcp_client(conn):
             conn.sendall("Error processing the command.".encode())
 
 def process_command(command):
-    """Process commands sent from the client."""
-    command = command.strip().lower()  # Clean and lower-case the command
+    command = command.strip().lower()
     print(f"Processing command: {command}")
     
     if "light on" in command:
@@ -69,7 +64,6 @@ def process_command(command):
         return "Door is now UNLOCKED."
     elif "thermostat set" in command:
         try:
-            # Extract temperature from the command
             temp = int([word for word in command.split() if word.isdigit()][0])
             return f"Thermostat set to {temp}°C."
         except (IndexError, ValueError):
@@ -78,7 +72,6 @@ def process_command(command):
         return "Unknown command."
 
 def start_tcp_server():
-    """Start the SSL-secured TCP server."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(certfile=SERVER_CERT, keyfile=SERVER_KEY)
 
@@ -91,12 +84,8 @@ def start_tcp_server():
             while True:
                 conn, addr = secure_sock.accept()
                 print(f"Connection from {addr}")
-                # Handle each client connection in a new thread
                 threading.Thread(target=handle_tcp_client, args=(conn,)).start()
 
 if __name__ == "__main__":
-    # Run FTP Server in a separate thread
     threading.Thread(target=setup_ftp_server, daemon=True).start()
-
-    # Start TCP Server
     start_tcp_server()
