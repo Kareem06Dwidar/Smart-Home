@@ -2,44 +2,42 @@ import tkinter as tk
 import threading
 import socket
 import ssl
-import cv2
-from datetime import datetime
-from ftplib import FTP
-import speech_recognition as sr
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.image import MIMEImage
 from tkinter import messagebox
 import os
+import imaplib
+import email
+from email.header import decode_header
+import cv2
+from datetime import datetime
 
 # === Email Configuration ===
-IMAP_SERVER = "imap.gmail.com"  # IMAP server for checking email (unused here)
-EMAIL_ADDRESS = "kareemsmtp@gmail.com"  # Sender email address
-PASSWORD = "kcic giob cibg mcgs"  # Email password/app password
+IMAP_SERVER = "imap.gmail.com"  # IMAP server for checking email
+EMAIL_ACCOUNT = "kareemsmtp@gmail.com"  # Replace with your email address
+EMAIL_PASSWORD = "kcic giob cibg mcgs"  # Replace with your app password
 
+# === FTP Configuration ===
+FTP_SERVER = '127.0.0.1'
+FTP_PORT = 2121
+FTP_USERNAME = 'user'
+FTP_PASSWORD = 'pass'
+FTP_UPLOAD_FOLDER = '/'
+CAPTURE_FOLDER = "captures"
+os.makedirs(CAPTURE_FOLDER, exist_ok=True)
+
+# === Email Sending Function ===
 def send_email(to_address, subject, body, image_path=None):
-    """
-    Sends an email using Gmail's SMTP server.
-    Optionally attaches an image.
-    
-    Parameters:
-    - to_address: Recipient email address.
-    - subject: Subject of the email.
-    - body: Text body of the email.
-    - image_path: Path to the image to attach (optional).
-    """
+    """Sends an email using Gmail's SMTP server."""
     try:
-        # Create the email container
         message = MIMEMultipart()
-        message["From"] = EMAIL_ADDRESS
+        message["From"] = EMAIL_ACCOUNT
         message["To"] = to_address
         message["Subject"] = subject
 
-        # Add text content to the email
         message.attach(MIMEText(body, "plain"))
 
-        # Attach image if provided
         if image_path:
             if os.path.exists(image_path):  # Check if image exists
                 with open(image_path, "rb") as img_file:
@@ -50,45 +48,33 @@ def send_email(to_address, subject, body, image_path=None):
                 messagebox.showerror("Image Error", f"Image file not found: {image_path}")
                 return
 
-        # Connect to Gmail's SMTP server and send the email
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(EMAIL_ADDRESS, PASSWORD)  # Authenticate
-            server.sendmail(EMAIL_ADDRESS, to_address, message.as_string())  # Send email
+            server.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_ACCOUNT, to_address, message.as_string()) 
 
-        # Notify user of success
         messagebox.showinfo("Email Sent", f"Email successfully sent to {to_address}!")
     except Exception as e:
-        # Notify user of error
         messagebox.showerror("Email Error", f"Failed to send email: {e}")
 
-
-# === Part 1: FTP Client for Upload ===
-# Handles file uploads to the FTP server.
-FTP_SERVER = '127.0.0.1'
-FTP_PORT = 2121
-FTP_USERNAME = 'user'
-FTP_PASSWORD = 'pass'
-FTP_UPLOAD_FOLDER = '/'
-CAPTURE_FOLDER = "captures"
-os.makedirs(CAPTURE_FOLDER, exist_ok=True)
-
-
-def upload_file_to_ftp(file_path):
-    """Upload a file to the FTP server."""
+# === Secure TCP Communication ===
+def send_secure_command(command):
+    """Send a secure command to the server and display the response on the GUI."""
     try:
-        with FTP() as ftp:
-            ftp.connect(FTP_SERVER, FTP_PORT)
-            ftp.login(FTP_USERNAME, FTP_PASSWORD)
-            ftp.cwd(FTP_UPLOAD_FOLDER)
-            with open(file_path, 'rb') as file:
-                ftp.storbinary(f'STOR {os.path.basename(file_path)}', file)
-            log_message(f"File '{file_path}' uploaded successfully.")
+        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        context.load_verify_locations("server.crt")
+
+        with socket.create_connection(('localhost', 5000)) as sock:
+            with context.wrap_socket(sock, server_hostname="localhost") as secure_sock:
+                print(f"Sending command: {command}")
+                secure_sock.sendall(command.encode())
+                response = secure_sock.recv(1024).decode()
+                print(f"Response: {response}")
+                log_message(response)  # Display server response on the GUI
     except Exception as e:
-        log_message(f"FTP upload error: {str(e)}")
+        print(f"Error sending secure command: {e}")
+        log_message(f"Error sending command: {e}")
 
-
-# === Part 2: Camera (Motion Detection) ===
-# Handles motion detection and captures images.
+# === Motion Detection ===
 def capture_motion():
     """Detect motion using the camera and capture an image."""
     camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
@@ -135,78 +121,95 @@ def capture_motion():
     finally:
         camera.release()
         cv2.destroyAllWindows()
-    """Detect motion using the camera and capture an image."""
-    send_email("kareem.dwidar2003@gmail.com",'Camera Detection!','Movement found..', r"C:\Users\Kareem Dwidar\Downloads\photo_5931742804264993388_y.jpg")
-    camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    if not camera.isOpened():
-        log_message("Error: Could not access the camera.")
-        return None
-
-    ret, frame1 = camera.read()
-    ret, frame2 = camera.read()
-    if not ret:
-        log_message("Error: Could not read frames.")
-        camera.release()
-        return None
-
-    try:
-        while True:
-            diff = cv2.absdiff(frame1, frame2)
-            gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-            blur = cv2.GaussianBlur(gray, (5, 5), 0)
-            _, thresh = cv2.threshold(blur, 20, 255, cv2.THRESH_BINARY)
-            dilated = cv2.dilate(thresh, None, iterations=3)
-            contours, _ = cv2.findContours(dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-            if contours:
-                log_message("Motion detected! Capturing image...")
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                capture_path = os.path.join(CAPTURE_FOLDER, f"motion_{timestamp}.jpg")
-                cv2.imwrite(capture_path, frame1)
-                log_message(f"Image saved: {capture_path}")
-                return capture_path
-
-            frame1 = frame2
-            ret, frame2 = camera.read()
-            if not ret:
-                break
-    finally:
-        camera.release()
-        cv2.destroyAllWindows()
 
 def start_motion_detection():
-    threading.Thread(target=_start_motion_detection, daemon=True).start()
+    """Start the motion detection process in a separate thread."""
+    threading.Thread(target=capture_motion, daemon=True).start()
 
-def _start_motion_detection():
-    file_path = capture_motion()
-    if file_path:
-        upload_file_to_ftp(file_path)
-
-
-# === Part 3: Secure Command Sending ===
-# Handles secure communication with the TCP server.
-SERVER_CERT = 'server.crt'
-TCP_SERVER_IP = 'localhost'
-TCP_SERVER_PORT = 5000
-
-def send_secure_command(command):
-    """Send a secure command to the server."""
+# === Email Check (IMAP) ===
+def check_email():
+    """Check for new emails in the inbox and execute commands."""
     try:
-        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-        context.load_verify_locations(SERVER_CERT)
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
+        mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
+        mail.select("inbox")
 
-        with socket.create_connection((TCP_SERVER_IP, TCP_SERVER_PORT)) as sock:
-            with context.wrap_socket(sock, server_hostname=TCP_SERVER_IP) as secure_sock:
-                log_message(f"Sending command: {command}")
-                secure_sock.sendall(command.encode())
-                response = secure_sock.recv(1024).decode()
-                log_message(f"Response: {response}")
+        status, messages = mail.search(None, "UNSEEN")
+        if status != "OK":
+            print("No new messages.")
+            return
+
+        for num in messages[0].split():
+            status, msg_data = mail.fetch(num, "(RFC822)")
+            for response_part in msg_data:
+                if isinstance(response_part, tuple):
+                    msg = email.message_from_bytes(response_part[1])
+
+                    # Decode email subject
+                    subject, encoding = decode_header(msg["Subject"])[0]
+                    if isinstance(subject, bytes):
+                        subject = subject.decode(encoding if encoding else "utf-8")
+                    print(f"New Email Subject: {subject}")
+
+                    # Extract email body (if multipart)
+                    body = None
+                    if msg.is_multipart():
+                        # Traverse the email parts
+                        for part in msg.walk():
+                            content_type = part.get_content_type()
+                            content_disposition = str(part.get("Content-Disposition"))
+
+                            # Only process non-attachment parts
+                            if "attachment" not in content_disposition:
+                                try:
+                                    body = part.get_payload(decode=True).decode()
+                                    # Stop once we find a valid body part
+                                    break
+                                except Exception as e:
+                                    print(f"Error decoding email body part: {e}")
+                                    body = None
+                    else:
+                        # If not multipart, directly get the payload
+                        try:
+                            body = msg.get_payload(decode=True).decode()
+                        except Exception as e:
+                            print(f"Error decoding email body: {e}")
+                            body = None
+
+                    # Check if body is extracted and process the command
+                    if body:
+                        print(f"Email Body: {body}")
+                        process_command(body)
+                    else:
+                        print("No valid body content found in the email.")
+
+        mail.close()
+        mail.logout()
+
     except Exception as e:
-        log_message(f"Error: {str(e)}")
+        print(f"Error checking emails: {e}")
 
+def process_command(command):
+    """Process email content as a command."""
+    print(f"Processing command: {command}")  # Added print statement to debug
+    command = command.lower()  # Make sure the command is case-insensitive
+    if "light" in command:
+        print("Command: Light ON/OFF detected.")
+        send_secure_command("Light ON" if "on" in command else "Light OFF")
+    elif "door" in command:
+        print("Command: Door LOCK/UNLOCK detected.")
+        send_secure_command("Door LOCK" if "lock" in command else "Door UNLOCK")
+    elif "thermostat" in command and "set" in command:
+        try:
+            temp = int([word for word in command.split() if word.isdigit()][0])
+            print(f"Command: Setting thermostat to {temp}°C.")
+            send_secure_command(f"Thermostat SET {temp}°C")
+        except (IndexError, ValueError):
+            print("Error: Could not extract temperature from the command.")
+    else:
+        print("Unknown command.")
 
-# === Part 4: GUI Setup ===
-# Handles the GUI layout and interaction logic.
+# === GUI Setup ===
 def log_message(message):
     root.after(0, lambda: _log_message(message))
 
@@ -266,6 +269,9 @@ tk.Label(root, text="Motion Detection", font=("Arial", 14)).pack(pady=5)
 motion_button = tk.Button(root, text="Start Motion Detection", command=start_motion_detection, font=("Arial", 12))
 motion_button.pack(pady=5)
 
-# === Part 5: Main Loop ===
-# Starts the GUI main loop.
+tk.Label(root, text="Check Emails", font=("Arial", 14)).pack(pady=5)
+check_email_button = tk.Button(root, text="Check Emails", command=check_email, font=("Arial", 12))
+check_email_button.pack(pady=5)
+
+# === Main Loop ===
 root.mainloop()
